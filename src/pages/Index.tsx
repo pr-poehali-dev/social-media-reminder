@@ -41,6 +41,14 @@ export default function Index() {
   const [dailyGoal] = useState(60);
   const [weeklyTotal] = useState(273);
   const [weeklyGoal] = useState(420);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notifiedAt50, setNotifiedAt50] = useState(false);
+  const [notifiedAt100, setNotifiedAt100] = useState(false);
+  const [notifiedOverLimit, setNotifiedOverLimit] = useState(false);
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   useEffect(() => {
     const quoteInterval = setInterval(() => {
@@ -51,19 +59,102 @@ export default function Index() {
     return () => clearInterval(quoteInterval);
   }, []);
 
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          setNotificationsEnabled(true);
+          toast.success('🔔 Уведомления включены!');
+        } else if (permission === 'denied') {
+          toast.error('Уведомления отключены');
+        }
+      } catch (error) {
+        console.log('Notification API не поддерживается');
+      }
+    }
+  };
+
+  const sendNotification = (title: string, body: string, icon: string = '⏰') => {
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        tag: 'social-media-reminder',
+        requireInteraction: true
+      });
+    }
+    toast.warning(icon + ' ' + title, {
+      description: body,
+      duration: 5000
+    });
+  };
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isTracking) {
       interval = setInterval(() => {
-        setTimeSpent(prev => prev + 1);
+        setTimeSpent(prev => {
+          const newTime = prev + 1;
+          checkAndNotify(newTime);
+          return newTime;
+        });
       }, 60000);
     }
     return () => clearInterval(interval);
-  }, [isTracking]);
+  }, [isTracking, notifiedAt50, notifiedAt100, notifiedOverLimit]);
+
+  const checkAndNotify = (time: number) => {
+    const percentage = (time / dailyGoal) * 100;
+
+    if (percentage >= 50 && percentage < 80 && !notifiedAt50) {
+      sendNotification(
+        'Половина лимита достигнута! 🕐',
+        `Ты уже использовал ${time} минут из ${dailyGoal}. Время задуматься!`,
+        '⚠️'
+      );
+      setNotifiedAt50(true);
+    }
+
+    if (percentage >= 80 && percentage < 100 && !notifiedAt100) {
+      sendNotification(
+        'Осталось совсем немного! 🚨',
+        `${dailyGoal - time} минут до лимита. Пора заканчивать!`,
+        '⏱️'
+      );
+      setNotifiedAt100(true);
+    }
+
+    if (time > dailyGoal && !notifiedOverLimit) {
+      sendNotification(
+        'Лимит превышен! 🛑',
+        'Ты превысил дневной лимит. Время выйти из соцсетей!',
+        '🔴'
+      );
+      setNotifiedOverLimit(true);
+    }
+
+    if (time > dailyGoal && (time - dailyGoal) % 10 === 0) {
+      sendNotification(
+        'Сделай перерыв! 💪',
+        `Превышение уже ${time - dailyGoal} минут. Реальный мир скучает по тебе!`,
+        '🌟'
+      );
+    }
+  };
 
   const toggleTracking = () => {
-    setIsTracking(!isTracking);
-    toast.success(isTracking ? 'Отслеживание остановлено' : 'Отслеживание запущено!');
+    const newTrackingState = !isTracking;
+    setIsTracking(newTrackingState);
+    
+    if (!newTrackingState) {
+      setNotifiedAt50(false);
+      setNotifiedAt100(false);
+      setNotifiedOverLimit(false);
+    }
+    
+    toast.success(newTrackingState ? '▶️ Отслеживание запущено!' : '⏸️ Отслеживание остановлено');
   };
 
   const progressPercentage = (timeSpent / dailyGoal) * 100;
@@ -243,7 +334,7 @@ export default function Index() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Icon name="Settings" size={20} />
-              Настройки цели
+              Настройки
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -254,6 +345,18 @@ export default function Index() {
             <div className="flex justify-between items-center">
               <span className="text-sm">Недельный лимит</span>
               <Badge variant="outline" className="text-base font-semibold">420 мин</Badge>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+              <div className="flex items-center gap-3">
+                <Icon name="Bell" size={20} className="text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Уведомления</p>
+                  <p className="text-xs text-muted-foreground">Push-напоминания о лимите</p>
+                </div>
+              </div>
+              <Badge variant={notificationsEnabled ? "default" : "secondary"} className="ml-2">
+                {notificationsEnabled ? '✓ Вкл' : 'Выкл'}
+              </Badge>
             </div>
             <Button variant="outline" className="w-full">
               <Icon name="Edit" size={16} className="mr-2" />
