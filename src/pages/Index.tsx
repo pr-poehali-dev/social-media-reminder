@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Icon from '@/components/ui/icon';
 import { toast } from 'sonner';
 
@@ -45,6 +47,12 @@ export default function Index() {
   const [notifiedAt50, setNotifiedAt50] = useState(false);
   const [notifiedAt100, setNotifiedAt100] = useState(false);
   const [notifiedOverLimit, setNotifiedOverLimit] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [notifyAt50, setNotifyAt50] = useState(true);
+  const [notifyAt80, setNotifyAt80] = useState(true);
+  const [notifyOverLimit, setNotifyOverLimit] = useState(true);
+  const [notifyEvery10, setNotifyEvery10] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     requestNotificationPermission();
@@ -75,7 +83,31 @@ export default function Index() {
     }
   };
 
-  const sendNotification = (title: string, body: string, icon: string = '⏰') => {
+  const playSound = (frequency: number = 440, duration: number = 200) => {
+    if (!soundEnabled) return;
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration / 1000);
+    } catch (error) {
+      console.log('Audio API недоступно');
+    }
+  };
+
+  const sendNotification = (title: string, body: string, icon: string = '⏰', soundFreq: number = 440) => {
     if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
       new Notification(title, {
         body,
@@ -85,6 +117,9 @@ export default function Index() {
         requireInteraction: true
       });
     }
+    
+    playSound(soundFreq, 300);
+    
     toast.warning(icon + ' ' + title, {
       description: body,
       duration: 5000
@@ -108,38 +143,42 @@ export default function Index() {
   const checkAndNotify = (time: number) => {
     const percentage = (time / dailyGoal) * 100;
 
-    if (percentage >= 50 && percentage < 80 && !notifiedAt50) {
+    if (notifyAt50 && percentage >= 50 && percentage < 80 && !notifiedAt50) {
       sendNotification(
         'Половина лимита достигнута! 🕐',
         `Ты уже использовал ${time} минут из ${dailyGoal}. Время задуматься!`,
-        '⚠️'
+        '⚠️',
+        523
       );
       setNotifiedAt50(true);
     }
 
-    if (percentage >= 80 && percentage < 100 && !notifiedAt100) {
+    if (notifyAt80 && percentage >= 80 && percentage < 100 && !notifiedAt100) {
       sendNotification(
         'Осталось совсем немного! 🚨',
         `${dailyGoal - time} минут до лимита. Пора заканчивать!`,
-        '⏱️'
+        '⏱️',
+        659
       );
       setNotifiedAt100(true);
     }
 
-    if (time > dailyGoal && !notifiedOverLimit) {
+    if (notifyOverLimit && time > dailyGoal && !notifiedOverLimit) {
       sendNotification(
         'Лимит превышен! 🛑',
         'Ты превысил дневной лимит. Время выйти из соцсетей!',
-        '🔴'
+        '🔴',
+        880
       );
       setNotifiedOverLimit(true);
     }
 
-    if (time > dailyGoal && (time - dailyGoal) % 10 === 0) {
+    if (notifyEvery10 && time > dailyGoal && (time - dailyGoal) % 10 === 0) {
       sendNotification(
         'Сделай перерыв! 💪',
         `Превышение уже ${time - dailyGoal} минут. Реальный мир скучает по тебе!`,
-        '🌟'
+        '🌟',
+        440
       );
     }
   };
@@ -358,12 +397,113 @@ export default function Index() {
                 {notificationsEnabled ? '✓ Вкл' : 'Выкл'}
               </Badge>
             </div>
-            <Button variant="outline" className="w-full">
-              <Icon name="Edit" size={16} className="mr-2" />
-              Изменить цели
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={() => setShowSettings(true)}
+            >
+              <Icon name="Settings" size={16} className="mr-2" />
+              Настроить уведомления
             </Button>
           </CardContent>
         </Card>
+
+        <Dialog open={showSettings} onOpenChange={setShowSettings}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Icon name="Bell" size={24} className="text-primary" />
+                Настройки уведомлений
+              </DialogTitle>
+              <DialogDescription>
+                Выбери, когда получать напоминания о времени в соцсетях
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Звуковые сигналы</p>
+                  <p className="text-xs text-muted-foreground">Проигрывать звук при уведомлении</p>
+                </div>
+                <Switch 
+                  checked={soundEnabled} 
+                  onCheckedChange={setSoundEnabled}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-semibold">Когда напоминать:</p>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="text-xl">⚠️</div>
+                    <div>
+                      <p className="text-sm font-medium">При 50% лимита</p>
+                      <p className="text-xs text-muted-foreground">Мягкое предупреждение (30 мин)</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={notifyAt50} 
+                    onCheckedChange={setNotifyAt50}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="text-xl">⏱️</div>
+                    <div>
+                      <p className="text-sm font-medium">При 80% лимита</p>
+                      <p className="text-xs text-muted-foreground">Срочное напоминание (48 мин)</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={notifyAt80} 
+                    onCheckedChange={setNotifyAt80}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="text-xl">🛑</div>
+                    <div>
+                      <p className="text-sm font-medium">При превышении лимита</p>
+                      <p className="text-xs text-muted-foreground">Критическое уведомление</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={notifyOverLimit} 
+                    onCheckedChange={setNotifyOverLimit}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="text-xl">💪</div>
+                    <div>
+                      <p className="text-sm font-medium">Каждые 10 мин сверх лимита</p>
+                      <p className="text-xs text-muted-foreground">Мотивация выйти из соцсетей</p>
+                    </div>
+                  </div>
+                  <Switch 
+                    checked={notifyEvery10} 
+                    onCheckedChange={setNotifyEvery10}
+                  />
+                </div>
+              </div>
+
+              <Button 
+                className="w-full bg-gradient-to-r from-primary to-secondary"
+                onClick={() => {
+                  setShowSettings(false);
+                  toast.success('✅ Настройки сохранены!');
+                }}
+              >
+                Сохранить настройки
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
       </div>
     </div>
